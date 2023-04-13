@@ -4,7 +4,8 @@
 CLANG ?= clang-14
 STRIP ?= llvm-strip-14
 OBJCOPY ?= llvm-objcopy-14
-CFLAGS := -O2 -g -Wall -Werror $(CFLAGS)
+# CFLAGS := -O2 -g -Wall -Werror $(CFLAGS)
+CFLAGS := -I/usr/include/x86_64-linux-gnu -O2 -g -Wall -Werror $(CFLAGS)
 
 CI_KERNEL_URL ?= https://github.com/cilium/ci-kernels/raw/master/
 

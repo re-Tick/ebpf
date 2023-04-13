@@ -54,13 +54,16 @@ type bpfSpecs struct {
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfProgramSpecs struct {
 	CountEgressPackets *ebpf.ProgramSpec `ebpf:"count_egress_packets"`
+	K_connect4         *ebpf.ProgramSpec `ebpf:"k_connect4"`
+	K_getpeername4     *ebpf.ProgramSpec `ebpf:"k_getpeername4"`
 }
 
 // bpfMapSpecs contains maps before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfMapSpecs struct {
-	PktCount *ebpf.MapSpec `ebpf:"pkt_count"`
+	PktCount    *ebpf.MapSpec `ebpf:"pkt_count"`
+	PortMapping *ebpf.MapSpec `ebpf:"port_mapping"`
 }
 
 // bpfObjects contains all objects after they have been loaded into the kernel.
@@ -82,12 +85,14 @@ func (o *bpfObjects) Close() error {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfMaps struct {
-	PktCount *ebpf.Map `ebpf:"pkt_count"`
+	PktCount    *ebpf.Map `ebpf:"pkt_count"`
+	PortMapping *ebpf.Map `ebpf:"port_mapping"`
 }
 
 func (m *bpfMaps) Close() error {
 	return _BpfClose(
 		m.PktCount,
+		m.PortMapping,
 	)
 }
 
@@ -96,11 +101,15 @@ func (m *bpfMaps) Close() error {
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfPrograms struct {
 	CountEgressPackets *ebpf.Program `ebpf:"count_egress_packets"`
+	K_connect4         *ebpf.Program `ebpf:"k_connect4"`
+	K_getpeername4     *ebpf.Program `ebpf:"k_getpeername4"`
 }
 
 func (p *bpfPrograms) Close() error {
 	return _BpfClose(
 		p.CountEgressPackets,
+		p.K_connect4,
+		p.K_getpeername4,
 	)
 }
 
