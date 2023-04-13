@@ -20,6 +20,18 @@ import (
 // $BPF_CLANG and $BPF_CFLAGS are set by the Makefile.
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -cc $BPF_CLANG -cflags $BPF_CFLAGS bpf cgroup_skb.c -- -I../headers
 
+func init() {
+	bootProxies()
+	log.Println("The running ports: ", runningPorts)
+}
+
+type Dest_info struct {
+	Dest_ip   uint32
+	Dest_port uint32
+}
+
+var objs = bpfObjects{}
+
 func main() {
 	// Allow the current process to lock memory for eBPF resources.
 	if err := rlimit.RemoveMemlock(); err != nil {
@@ -27,7 +39,7 @@ func main() {
 	}
 
 	// Load pre-compiled programs and maps into the kernel.
-	objs := bpfObjects{}
+	// objs := bpfObjects{}
 	if err := loadBpfObjects(&objs, nil); err != nil {
 		log.Fatalf("loading objects: %v", err)
 	}
@@ -39,16 +51,41 @@ func main() {
 		log.Fatal(err)
 	}
 
+	println("cgroup path: ", cgroupPath)
+
 	// Link the count_egress_packets program to the cgroup.
 	l, err := link.AttachCgroup(link.CgroupOptions{
 		Path:    cgroupPath,
 		Attach:  ebpf.AttachCGroupInetEgress,
 		Program: objs.CountEgressPackets,
 	})
+
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer l.Close()
+
+	c4, err := link.AttachCgroup(link.CgroupOptions{
+		Path:    cgroupPath,
+		Attach:  ebpf.AttachCGroupInet4Connect,
+		Program: objs.K_connect4,
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c4.Close()
+
+	gp4, err := link.AttachCgroup(link.CgroupOptions{
+		Path:    cgroupPath,
+		Attach:  ebpf.AttachCgroupInet4GetPeername,
+		Program: objs.K_getpeername4,
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer gp4.Close()
 
 	log.Println("Counting packets...")
 
@@ -57,13 +94,34 @@ func main() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	objs.PortMapping.Update(uint32(1), Dest_info{Dest_ip: 10, Dest_port: 11}, ebpf.UpdateAny)
+	for i, v := range runningPorts {
+		objs.VaccantPorts.Update(uint32(i), v, ebpf.UpdateAny)
+	}
 	for range ticker.C {
 		var value uint64
 		if err := objs.PktCount.Lookup(uint32(0), &value); err != nil {
 			log.Fatalf("reading map: %v", err)
 		}
-		log.Printf("number of packets: %d\n", value)
+
+		// var dest Dest_info
+		// var key uint32 = 1
+
+		// iter := objs.PortMapping.Iterate()
+		// for iter.Next(&key,&dest){
+		// 	log.Printf("Key: %v || Value: %v",key,dest)
+		// }
+
+		// if err := objs.PortMapping.Lookup(key, &dest); err != nil {
+		// 	log.Printf("/proxy: reading Port map: %v", err)
+		// } else {
+		// 	log.Printf("/proxy: Value for key:[%v]: %v", key, dest)
+		// }
+
+		// objs.
+		// log.Printf("number of packets: %d\n", value)
 	}
+
 }
 
 // detectCgroupPath returns the first-found mount point of type cgroup2
