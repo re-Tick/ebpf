@@ -7,10 +7,13 @@ package main
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -28,6 +31,14 @@ func init() {
 type Dest_info struct {
 	Dest_ip   uint32
 	Dest_port uint32
+}
+
+type Bpf_spin_lock struct{ Val uint32 }
+
+type Vaccant_port struct {
+	Port uint32
+	// Occupied bool
+	Lock Bpf_spin_lock
 }
 
 var objs = bpfObjects{}
@@ -95,14 +106,69 @@ func main() {
 	defer ticker.Stop()
 
 	objs.PortMapping.Update(uint32(1), Dest_info{Dest_ip: 10, Dest_port: 11}, ebpf.UpdateAny)
+
+	arr, err := ebpf.NewMap(&ebpf.MapSpec{
+		Type:       ebpf.PerCPUArray,
+		KeySize:    4,
+		ValueSize:  4,
+		MaxEntries: 2,
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer arr.Close()
+
+	first := []uint32{4, 5}
+	fmt.Printf("sizeof an element in percpu: %v", unsafe.Sizeof(first))
+	if err := arr.Put(uint32(0), first); err != nil {
+		panic(err)
+	}
+
+	second := []uint32{2, 8}
+	if err := arr.Put(uint32(1), second); err != nil {
+		panic(err)
+	}
+
+	var values []uint32
+	if err := arr.Lookup(uint32(0), &values); err != nil {
+		panic(err)
+	}
+	fmt.Printf("First two values: %v for typesof: %T\n", values[:2], arr)
+
 	for i, v := range runningPorts {
-		objs.VaccantPorts.Update(uint32(i), v, ebpf.UpdateAny)
+		log.Printf("setting the vPorts at i: %v and port: %v, ncpus: %v, sizeof(vaccantPorts): %v", i, v, runtime.NumCPU(), unsafe.Sizeof(Vaccant_port{Port: v}))
+		inf, err := objs.VaccantPorts.Info()
+		err = objs.VaccantPorts.Update(uint32(i), Vaccant_port{Port: v}, ebpf.UpdateLock)
+
+		// err := objs.VaccantPorts.Update(uint32(i), []Vaccant_port{{Port: v, Occupied: false}}, ebpf.UpdateAny)
+		// ports := []uint32{}
+		// for i := 0; i < runtime.NumCPU(); i++ {
+		// 	ports = append(ports, v)
+		// }
+		// err := objs.VaccantPorts.Put(uint32(i), ports)
+
+		// err := objs.VaccantPorts.Put(uint32(i), []Vaccant_port{{Port: v, Occupied: false}, {Port: v, Occupied: false}})
+
+		if err != nil {
+			log.Printf("failed to update the vaccantPorts array at userspace. error: %v", err)
+		}
+		log.Printf("info about VaccantPorts: %v", inf)
 	}
 	for range ticker.C {
 		var value uint64
 		if err := objs.PktCount.Lookup(uint32(0), &value); err != nil {
 			log.Fatalf("reading map: %v", err)
 		}
+
+		var port = Vaccant_port{}
+		var all_cpu_value []uint32
+		if err := objs.VaccantPorts.Lookup(uint32(0), &all_cpu_value); err != nil {
+			log.Fatalf("reading map: %v", err)
+		}
+		for cpuid, cpuvalue := range all_cpu_value {
+			log.Printf("%s called %d times on CPU%v\n", "connect4", cpuvalue, cpuid)
+		}
+		log.Printf("reading map: %v", port)
 
 		// var dest Dest_info
 		// var key uint32 = 1

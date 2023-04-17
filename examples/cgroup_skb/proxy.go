@@ -67,6 +67,18 @@ func startProxy(port uint32) {
 func handleConnection(conn net.Conn, port uint32) {
 	// port := getRemotePort(conn)
 
+	var (
+	// tmpPort uint32
+	// indx    uint32 = 0
+	)
+	// if err := objs.VaccantPorts.Lookup(uint32(0), &tmpPort); err != nil {
+	// 	log.Fatalf("reading map: %v", err)
+	// }
+	// log.Printf("Vacant_ports %T, port at index 0: %v", objs.VaccantPorts, tmpPort)
+
+	// if err := objs.VaccantPorts.Delete(indx); err != nil {
+	// log.Fatalf("failed to delete a port from vacant_ports: %v", err)
+	// }
 	log.Println("port: ", port)
 	// var dest Dest_info
 	// if err := objs.PortMapping.Lookup(port, &dest); err != nil {

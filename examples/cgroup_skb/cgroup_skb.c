@@ -3,8 +3,15 @@
 #include "common.h"
 #include <asm-generic/types.h>
 #include <asm/bitsperlong.h>
+// #include <byteswap.h>
+// #include <arpa/inet.h>
+#include "bpf_endian.h"
+#include "bpf_helpers.h"
+
+#include "bpf_tracing.h"
 #include <linux/bpf.h>
 #include <linux/types.h>
+#include <stdbool.h>
 
 // #include <errno.h>
 // #include <gnu/stubs-32.h>
@@ -21,6 +28,18 @@ struct bpf_map_def SEC("maps") pkt_count = {
 	.max_entries = 1,
 };
 
+// u32 nr_cpus = BPF_CORE_READ(NR_CPUS);
+
+// struct bpf_spin_lock;
+struct bpf_spin_lock {
+	__u32 val;
+};
+struct vaccant_port {
+	u32 port;
+	// bool occupied;
+	struct bpf_spin_lock lock;
+};
+
 struct dest_info {
 	u32 dest_ip;
 	u32 dest_port;
@@ -34,15 +53,41 @@ struct bpf_map_def SEC("maps") port_mapping = {
 };
 
 struct bpf_map_def SEC("maps") vaccant_ports = {
-	.type        = BPF_MAP_TYPE_ARRAY,
-	.key_size    = sizeof(u32),
-	.value_size  = sizeof(u32),
+	.type       = BPF_MAP_TYPE_ARRAY,
+	.key_size   = sizeof(u32),
+	.value_size = sizeof(struct vaccant_port),
+	// .value_size  = sizeof(u32),
 	.max_entries = 50,
 };
 
+// int fd;
+// union bpf_attr attr = {
+// 	.map_type    = BPF_MAP_TYPE_ARRAY, /* mandatory */
+// 	.key_size    = sizeof(__u32),      /* mandatory */
+// 	.value_size  = sizeof(__u32),      /* mandatory */
+// 	.max_entries = 256,                /* mandatory */
+// 	// .map_flags = BPF_F_MMAPABLE;
+// 	.map_name = "vaccant_Queue",
+// };
+
+// int fd = bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
+// int fd = 9;
+
+// struct bpf_map_def SEC("maps") vaccant_Queue = {
+// 	// __uint(type, BPF_MAP_TYPE_QUEUE);
+// 	// __type(value, __u32);
+// 	// __uint(max_entries, 10);
+// 	.type = BPF_MAP_TYPE_QUEUE,
+// 	// .type = BPF_MAP_TYPE_PERCPU_ARRAY,
+
+// 	.key_size    = sizeof(u32),
+// 	.value_size  = sizeof(u64),
+// 	.max_entries = 50,
+// };
+
 // [5002 , ... , 5001]
 
-u64 PID      = 73161;
+u64 PID      = 272706;
 u16 NEW_PORT = 8080; // Choose the desired port number
 u32 NEW_IP   = 0;    // 192.168.1.23 in hexadecimal forma
 
@@ -80,12 +125,30 @@ int k_connect4(struct bpf_sock_addr *ctx) {
 	// destination ip
 	u32 dst_ip = ctx->user_ip4;
 	// destination port
-	u32 dst_port = ctx->user_port;
+	// u32 dst_port = ctx->user_port;
+	u16 dst_port_u = (u16)ctx->user_port;
+	// u16 dst_port   = __bswap_16(dst_port_u);
+	u16 dst_port = bpf_ntohs(dst_port_u);
 
-	u32 index  = 0;
-	u32 *value = bpf_map_lookup_elem(&vaccant_ports, &index);
+	const u32 index            = (u32)0;
+	struct vaccant_port *value = bpf_map_lookup_elem(&vaccant_ports, &index);
+	// u32 *value = bpf_map_lookup_elem(&vaccant_ports, &index);
+
 	if (value) {
-		bpf_printk("vaccant proxy at port:%u\n", *value);
+		// bpf_printk("vaccant proxy at port:%p, sizeof(vaccantPorts): %d\n", (void *)value, sizeof(struct vaccant_port));
+		// bpf_printk("vaccant proxy at port:%u\n", *value);
+		// __sync_fetch_and_sub(value, *value);
+
+		// 	int ret = bpf_map_delete_elem(&vaccant_ports, &index);
+		// if (ret) {
+		// 	// Handle the error...
+		// 	bpf_printk("error deleting the front from the vaccant_ports:%d\n", ret);
+		// }
+		// index       = 0;
+		// u32 *value2 = bpf_map_lookup_elem(&vaccant_ports, &index);
+		// if (value2) {
+		// 	bpf_printk("vaccant proxy at port after pop:%u\n", *value2);
+		// }
 	}
 
 	// (*value)++;
@@ -118,7 +181,7 @@ int k_connect4(struct bpf_sock_addr *ctx) {
 	// }
 	// redirecting to proxy.
 	ctx->user_ip4  = NEW_IP;
-	ctx->user_port = 5000;
+	ctx->user_port = (__u32)bpf_ntohs(5000);
 	bpf_printk("destination IP: %u | destination Port: %u", ctx->user_ip4, ctx->user_port);
 	return 1;
 }
