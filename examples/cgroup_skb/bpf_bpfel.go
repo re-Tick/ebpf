@@ -12,6 +12,14 @@ import (
 	"github.com/cilium/ebpf"
 )
 
+type bpfVaccantPort struct {
+	Port     uint32
+	Occupied uint32
+	DestIp   uint32
+	DestPort uint32
+	Lock     struct{ Val uint32 }
+}
+
 // loadBpf returns the embedded CollectionSpec for bpf.
 func loadBpf() (*ebpf.CollectionSpec, error) {
 	reader := bytes.NewReader(_BpfBytes)
